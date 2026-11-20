@@ -4,9 +4,9 @@ import telebot
 from telebot import types
 
 # Token va majburiy kanalni o'zingiznikiga almashtiring
-TOKEN = os.getenv("BOT_TOKEN", "BU_YERGA_BOT_TOKEN_YOZING")
-ADMIN_ID = 123456789  # O'zingizning Telegram ID raqamingiz
-CHANNEL_USERNAME = "@kanal_username"  # Majburiy obuna kanali (@ bilan)
+TOKEN = os.getenv("BOT_TOKEN", 9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A")
+ADMIN_ID = 7630210071  # O'zingizning Telegram ID raqamingiz
+CHANNEL_USERNAME = "@oltinkadr_uz"  # Majburiy obuna kanali (@ bilan)
 
 bot = telebot.TeleBot(TOKEN)
 
