@@ -4,7 +4,7 @@ import telebot
 from telebot import types
 
 # Token va majburiy kanalni o'zingiznikiga almashtiring
-TOKEN = os.getenv("BOT_TOKEN", 9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A")
+TOKEN = os.getenv("BOT_TOKEN", "9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A")
 ADMIN_ID = 7630210071  # O'zingizning Telegram ID raqamingiz
 CHANNEL_USERNAME = "@oltinkadr_uz"  # Majburiy obuna kanali (@ bilan)
 
@@ -31,108 +31,127 @@ CREATE TABLE IF NOT EXISTS movies (
 """)
 conn.commit()
 
+# Obuna bo'lguncha vaqtincha eslab qolinadigan kino kodlari
+pending_codes = {}
+
 
 def is_subscribed(user_id: int) -> bool:
-    """Foydalanuvchi majburiy kanalga obuna bo'lganini tekshiradi."""
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ("member", "administrator", "creator")
-    except Exception:
-        return False
+  """Foydalanuvchi majburiy kanalga obuna bo'lganini tekshiradi."""
+  try:
+    member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+    return member.status in ("member", "administrator", "creator")
+  except Exception:
+    return False
 
 
-def send_subscribe_prompt(chat_id: int):
-    """Obuna bo'lish tugmalari bilan xabar yuboradi."""
-    clean_channel = CHANNEL_USERNAME.lstrip("@")
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton(
-            "📢 Kanalga obuna bo‘lish",
-            url=f"https://t.me/{clean_channel}"
-        )
-    )
-    markup.add(
-        types.InlineKeyboardButton(
-            "✅ Tekshirish",
-            callback_data="check_sub"
-        )
-    )
+def send_subscribe_prompt(chat_id: int, user_id: int, code: str | None = None):
+  """Obuna bo'lish tugmalari bilan xabar yuboradi."""
+  if code:
+    pending_codes[user_id] = code
+
+  clean_channel = CHANNEL_USERNAME.lstrip("@")
+  markup = types.InlineKeyboardMarkup()
+  markup.add(
+      types.InlineKeyboardButton(
+          "📢 Kanalga obuna bo‘lish", url=f"https://t.me/{clean_channel}"
+      )
+  )
+  markup.add(
+      types.InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")
+  )
+  bot.send_message(
+      chat_id,
+      "🔒 Filmni olishdan oldin quyidagi kanalga obuna bo‘ling:",
+      reply_markup=markup,
+  )
+
+
+def send_movie(chat_id: int, code: str):
+  """Kod bo'yicha bazadagi filmni yuboradi."""
+  cursor.execute(
+      "SELECT title, description, file_id FROM movies WHERE code = ?", (code,)
+  )
+  movie = cursor.fetchone()
+
+  if not movie:
     bot.send_message(
         chat_id,
-        "🔒 Davom etish uchun quyidagi kanalga obuna bo‘ling:",
-        reply_markup=markup
+        "❌ Bunday kod bilan film topilmadi. Boshqa kod kiriting.",
     )
+    return
+
+  title, description, file_id = movie
+  caption = f"🎥 <b>{title}</b>"
+  if description:
+    caption += f"\n\n📝 {description}"
+
+  bot.send_video(
+      chat_id, file_id, caption=caption, parse_mode="HTML"
+  )
 
 
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-    user_id = message.from_user.id
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
+  user_id = message.from_user.id
+  cursor.execute(
+      "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+  )
+  conn.commit()
 
-    if not is_subscribed(user_id):
-        send_subscribe_prompt(message.chat.id)
-        return
+  if not is_subscribed(user_id):
+    send_subscribe_prompt(message.chat.id, user_id)
+    return
 
-    bot.send_message(
-        message.chat.id,
-        "🎬 <b>Filmbot</b>ga xush kelibsiz!\n\n"
-        "Kerakli film kodini yuboring (masalan: <code>101</code>).",
-        parse_mode="HTML"
-    )
+  bot.send_message(
+      message.chat.id,
+      "🎬 <b>Filmbot</b>ga xush kelibsiz!\n\n"
+      "Kerakli film kodini yuboring (masalan: <code>101</code>).",
+      parse_mode="HTML",
+  )
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_sub")
 def handle_check_sub(call):
-    if is_subscribed(call.from_user.id):
-        bot.answer_callback_query(call.id, "✅ Obuna tasdiqlandi!")
-        bot.edit_message_text(
-            "🎉 Rahmat! Endi film kodini yuborishingiz mumkin.",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id
-        )
+  user_id = call.from_user.id
+  if is_subscribed(user_id):
+    bot.answer_callback_query(call.id, "✅ Obuna tasdiqlandi!")
+    code = pending_codes.pop(user_id, None)
+    try:
+      bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+      pass
+
+    if code:
+      send_movie(call.message.chat.id, code)
     else:
-        bot.answer_callback_query(
-            call.id,
-            "❌ Hali obuna bo‘lmadingiz!",
-            show_alert=True
-        )
+      bot.send_message(
+          call.message.chat.id,
+          "🎉 Rahmat! Endi film kodini yuborishingiz mumkin.",
+      )
+  else:
+    bot.answer_callback_query(
+        call.id, "❌ Hali obuna bo‘lmadingiz!", show_alert=True
+    )
 
 
 @bot.message_handler(func=lambda message: True)
 def handle_movie_code(message):
-    user_id = message.from_user.id
-    if not is_subscribed(user_id):
-        send_subscribe_prompt(message.chat.id)
-        return
+  user_id = message.from_user.id
+  code = (message.text or "").strip()
 
-    code = (message.text or "").strip()
-    cursor.execute(
-        "SELECT title, description, file_id FROM movies WHERE code = ?",
-        (code,)
-    )
-    movie = cursor.fetchone()
+  cursor.execute(
+      "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+  )
+  conn.commit()
 
-    if not movie:
-        bot.send_message(
-            message.chat.id,
-            "❌ Bunday kod bilan film topilmadi. Boshqa kod kiriting."
-        )
-        return
+  if not is_subscribed(user_id):
+    send_subscribe_prompt(message.chat.id, user_id, code=code)
+    return
 
-    title, description, file_id = movie
-    caption = f"🎥 <b>{title}</b>"
-    if description:
-        caption += f"\n\n📝 {description}"
-
-    bot.send_video(
-        message.chat.id,
-        file_id,
-        caption=caption,
-        parse_mode="HTML"
-    )
+  send_movie(message.chat.id, code)
 
 
 if __name__ == "__main__":
-    print("Filmbot ishga tushdi...")
-    bot.infinity_polling(skip_pending=True)
+  print("Filmbot ishga tushdi...")
+  bot.infinity_polling(skip_pending=True)
+
