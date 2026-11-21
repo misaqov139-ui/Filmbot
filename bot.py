@@ -1,157 +1,152 @@
-import os
 import sqlite3
 import telebot
 from telebot import types
 
-# Token va majburiy kanalni o'zingiznikiga almashtiring
-TOKEN = os.getenv("BOT_TOKEN", "9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A")
-ADMIN_ID = 7630210071  # O'zingizning Telegram ID raqamingiz
-CHANNEL_USERNAME = "@oltinkadr_uz"  # Majburiy obuna kanali (@ bilan)
+TOKEN = "9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A"
+ADMIN_ID = 7630210071
+
+CHANNEL_ID = "@oltinkadr_uz[span_1](start_span)"[span_1](end_span)
+CHANNEL_URL = "https://t.me/oltinkadr_uz[span_2](start_span)"[span_2](end_span)
 
 bot = telebot.TeleBot(TOKEN)
 
-# SQLite bazani ulash va jadvallarni yaratish
-conn = sqlite3.connect("filmbot.db", check_same_thread=False)
+# --- SQLite baza ---
+conn = sqlite3.connect("films.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    status TEXT DEFAULT 'user'
-)
-""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS movies (
+CREATE TABLE IF NOT EXISTS films (
     code TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT,
-    file_id TEXT NOT NULL
+    file_id TEXT,
+    caption TEXT
 )
 """)
 conn.commit()
 
-# Obuna bo'lguncha vaqtincha eslab qolinadigan kino kodlari
-pending_codes = {}
+
+# --- Majburiy obuna tekshiruvi ---
+def is_subscribed(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    try:
+        member = bot.get_chat_member(CHANNEL_ID, user_id)
+        return member.status in ["creator", "administrator", "member"]
+    except Exception:
+        return False
 
 
-def is_subscribed(user_id: int) -> bool:
-  """Foydalanuvchi majburiy kanalga obuna bo'lganini tekshiradi."""
-  try:
-    member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-    return member.status in ("member", "administrator", "creator")
-  except Exception:
-    return False
+def send_sub_message(chat_id):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_join = types.InlineKeyboardButton("🎬 @oltinkadr_uz kanaliga a'zo bo'lish", url=CHANNEL_URL)[span_3](start_span)[span_3](end_span)
+    btn_check = types.InlineKeyboardButton("✅ Obunani tekshirish", callback_data="check_sub")
+    markup.add(btn_join, btn_check)
 
-
-def send_subscribe_prompt(chat_id: int, user_id: int, code: str | None = None):
-  """Obuna bo'lish tugmalari bilan xabar yuboradi."""
-  if code:
-    pending_codes[user_id] = code
-
-  clean_channel = CHANNEL_USERNAME.lstrip("@")
-  markup = types.InlineKeyboardMarkup()
-  markup.add(
-      types.InlineKeyboardButton(
-          "📢 Kanalga obuna bo‘lish", url=f"https://t.me/{clean_channel}"
-      )
-  )
-  markup.add(
-      types.InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")
-  )
-  bot.send_message(
-      chat_id,
-      "🔒 Filmni olishdan oldin quyidagi kanalga obuna bo‘ling:",
-      reply_markup=markup,
-  )
-
-
-def send_movie(chat_id: int, code: str):
-  """Kod bo'yicha bazadagi filmni yuboradi."""
-  cursor.execute(
-      "SELECT title, description, file_id FROM movies WHERE code = ?", (code,)
-  )
-  movie = cursor.fetchone()
-
-  if not movie:
     bot.send_message(
         chat_id,
-        "❌ Bunday kod bilan film topilmadi. Boshqa kod kiriting.",
+        "Filmlarni ko‘rish uchun avval quyidagi kanalga a'zo bo‘ling:\n"
+        f"{CHANNEL_URL}",[span_4](start_span)[span_4](end_span)
+        reply_markup=markup
     )
-    return
-
-  title, description, file_id = movie
-  caption = f"🎥 <b>{title}</b>"
-  if description:
-    caption += f"\n\n📝 {description}"
-
-  bot.send_video(
-      chat_id, file_id, caption=caption, parse_mode="HTML"
-  )
 
 
+def send_main_menu(message):
+    text = (
+        "Assalomu alaykum!\n"
+        "Kerakli kino kodini yuboring (masalan: 101) — men sizga yuboraman.[span_5](start_span)"[span_5](end_span)
+    )
+    if message.from_user.id == ADMIN_ID:
+        text += "\n\n🛠 Admin menyusi:\n/addfilm — yangi kino qo‘shish[span_6](start_span)"[span_6](end_span)
+    bot.send_message(message.chat.id, text)
+
+
+# --- /start ---
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-  user_id = message.from_user.id
-  cursor.execute(
-      "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
-  )
-  conn.commit()
-
-  if not is_subscribed(user_id):
-    send_subscribe_prompt(message.chat.id, user_id)
-    return
-
-  bot.send_message(
-      message.chat.id,
-      "🎬 <b>Filmbot</b>ga xush kelibsiz!\n\n"
-      "Kerakli film kodini yuboring (masalan: <code>101</code>).",
-      parse_mode="HTML",
-  )
+    if not is_subscribed(message.from_user.id):
+        send_sub_message(message.chat.id)
+        return
+    send_main_menu(message)
 
 
+# --- Tekshirish tugmasi ---
 @bot.callback_query_handler(func=lambda call: call.data == "check_sub")
-def handle_check_sub(call):
-  user_id = call.from_user.id
-  if is_subscribed(user_id):
-    bot.answer_callback_query(call.id, "✅ Obuna tasdiqlandi!")
-    code = pending_codes.pop(user_id, None)
-    try:
-      bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
-      pass
-
-    if code:
-      send_movie(call.message.chat.id, code)
+def callback_check_sub(call):
+    if is_subscribed(call.from_user.id):
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        bot.answer_callback_query(call.id, "Tasdiqlandi! Marhamat.")
+        send_main_menu(call.message)
     else:
-      bot.send_message(
-          call.message.chat.id,
-          "🎉 Rahmat! Endi film kodini yuborishingiz mumkin.",
-      )
-  else:
-    bot.answer_callback_query(
-        call.id, "❌ Hali obuna bo‘lmadingiz!", show_alert=True
-    )
+        bot.answer_callback_query(
+            call.id,
+            "Hali kanalga a'zo emassiz! Avval a'zo bo‘lib, keyin bosing.",
+            show_alert=True
+        )
 
 
-@bot.message_handler(func=lambda message: True)
-def handle_movie_code(message):
-  user_id = message.from_user.id
-  code = (message.text or "").strip()
+# --- Admin: /addfilm ---
+admin_states = {}
 
-  cursor.execute(
-      "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
-  )
-  conn.commit()
 
-  if not is_subscribed(user_id):
-    send_subscribe_prompt(message.chat.id, user_id, code=code)
-    return
+@bot.message_handler(commands=["addfilm"])
+def handle_addfilm(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "Bu buyruq faqat admin uchun.")
+        return
+    admin_states[message.from_user.id] = {"step": "code"}
+    bot.send_message(message.chat.id, "Yangi kino kodini kiriting (masalan: 101):")[span_7](start_span)[span_7](end_span)
 
-  send_movie(message.chat.id, code)
+
+@bot.message_handler(func=lambda m: m.from_user.id in admin_states)
+def handle_admin_steps(message):
+    user_id = message.from_user.id
+    state = admin_states[user_id]
+
+    if state["step"] == "code":
+        code = (message.text or "").strip()
+        if not code:
+            bot.send_message(message.chat.id, "Kod bo‘sh bo‘lmasin, qaytadan yozing:")
+            return
+        state["code"] = code
+        state["step"] = "video"
+        bot.send_message(message.chat.id, f"Kod `{code}` saqlandi. Endi kino videosini yuboring:", parse_mode="Markdown")
+
+    elif state["step"] == "video":
+        if not message.video:
+            bot.send_message(message.chat.id, "Faqat video fayl yuboring.")
+            return
+        file_id = message.video.file_id
+        caption = message.caption or f"🎬 Kod: {state['code']}\nKanalimiz: {CHANNEL_URL}[span_8](start_span)"[span_8](end_span)
+        cursor.execute(
+            "INSERT OR REPLACE INTO films (code, file_id, caption) VALUES (?, ?, ?)",
+            (state["code"], file_id, caption)
+        )
+        conn.commit()
+        del admin_states[user_id]
+        bot.send_message(message.chat.id, f"✅ Tayyor! Kino `{state['code']}` kodi bilan bazaga qo‘shildi.", parse_mode="Markdown")
+
+
+# --- Kino kodini qidirish ---
+@bot.message_handler(func=lambda m: True)
+def handle_film_request(message):
+    if not is_subscribed(message.from_user.id):
+        send_sub_message(message.chat.id)
+        return
+
+    code = (message.text or "").strip()
+    cursor.execute("SELECT file_id, caption FROM films WHERE code = ?", (code,))
+    row = cursor.fetchone()
+
+    if row:
+        file_id, caption = row
+        bot.send_video(message.chat.id, file_id, caption=caption)
+    else:
+        bot.send_message(message.chat.id, "Kechirasiz, bu kod bo‘yicha kino topilmadi. Boshqa kod yuboring.")
 
 
 if __name__ == "__main__":
-  print("Filmbot ishga tushdi...")
-  bot.infinity_polling(skip_pending=True)
+    print("Bot ishga tushdi...")
+    bot.infinity_polling(none_stop=True)
+
 
