@@ -105,18 +105,33 @@ def handle_addfilm(message):
 def handle_admin_steps(message):
     user_id = message.from_user.id
     state = admin_states[user_id]
+    print("Admin step:", state["step"], "user:", user_id)
 
     if state["step"] == "code":
-        code = message.text.strip()
+        code = (message.text or "").strip()
+        if not code:
+            bot.send_message(message.chat.id, "Iltimos, matn ko'rinishida kod kiriting:")
+            return
         state["code"] = code
         state["step"] = "video"
         bot.send_message(message.chat.id, "Endi kino videosini yuboring:")
+
     elif state["step"] == "video":
-        if not message.video:
-            bot.send_message(message.chat.id, "Iltimos, video fayl yuboring!")
+        video_obj = message.video or message.document
+        if not video_obj:
+            bot.send_message(message.chat.id, "Iltimos, video yuboring!")
             return
-        file_id = message.video.file_id
+        file_id = video_obj.file_id
         caption = message.caption or f"Kino kodi: {state['code']}"
+        cursor.execute(
+            "INSERT OR REPLACE INTO films (code, file_id, caption) VALUES (?, ?, ?)",
+            (state["code"], file_id, caption)
+        )
+        conn.commit()
+        saved_code = state["code"]
+        del admin_states[user_id]
+        bot.send_message(message.chat.id, f"Kino saqlandi! Kod: {saved_code}")
+
         cursor.execute(
             "INSERT OR REPLACE INTO films (code, file_id, caption) VALUES (?, ?, ?)",
             (state["code"], file_id, caption)
