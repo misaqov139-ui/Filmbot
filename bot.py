@@ -5,8 +5,9 @@ from telebot import types
 TOKEN = "9165959275:AAGBBI01FygWzxiDjxAqfBI7W-2786DQg8A"
 ADMIN_ID = 7630210071
 
-CHANNEL_ID = "@oltinkadr_uz[span_1](start_span)"[span_1](end_span)
-CHANNEL_URL = "https://t.me/oltinkadr_uz[span_2](start_span)"[span_2](end_span)
+CHANNEL_ID = "@oltinkadr_uz"
+CHANNEL_URL = "https://t.me/oltinkadr_uz"
+
 
 bot = telebot.TeleBot(TOKEN)
 
