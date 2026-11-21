@@ -44,7 +44,7 @@ def send_sub_message(chat_id):
     bot.send_message(
         chat_id,
         "Filmlarni ko‘rish uchun avval quyidagi kanalga a'zo bo‘ling:\n"
-        f"{CHANNEL_URL}",[span_4](start_span)[span_4](end_span)
+        f"{CHANNEL_URL}"
         reply_markup=markup
     )
 
