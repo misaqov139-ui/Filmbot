@@ -2,7 +2,7 @@
 import telebot
 from telebot import types
 
-TOKEN = "9165959275:AAFpoEr3CsQpp36xjdEjw9fVu26NL1wakuo"
+TOKEN = "9165959275:AAG10QABr6H_C6cJ8BREf6vkINh1zRni9U4"
 ADMIN_ID = 7630210071
 
 CHANNEL_ID = "@oltinkadr_uz"
